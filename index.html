@@ -1,0 +1,1178 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Organigrama Empresarial</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
+    <style>
+        #organigrama-container {
+            width: 100%;
+            height: calc(100vh - 180px);
+            min-height: 600px;
+            border: 1px solid #dee2e6;
+            background-color: #f8f9fa;
+            position: relative;
+            overflow: auto;
+        }
+
+        #organigrama {
+            width: 3000px;
+            height: 3000px;
+            background-color: white;
+            background-image: 
+                linear-gradient(rgba(0, 0, 0, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+
+        .joint-element .body {
+            transition: all 0.3s;
+            cursor: move;
+            stroke-width: 2px;
+        }
+
+        .joint-element.moving .body {
+            filter: brightness(90%);
+            transform: scale(1.02);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .joint-element:hover .body {
+            filter: brightness(95%);
+            stroke-width: 3px;
+        }
+
+        .joint-element[data-type="direct"] .body {
+            fill: #D4E6F1;
+            stroke: #2C6A9B;
+        }
+
+        .joint-element[data-type="advisory"] .body {
+            fill: #D5E8D4;
+            stroke: #4A8C5E;
+        }
+
+        .organigrama-toolbar {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            z-index: 100;
+            background: white;
+            padding: 8px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 5px;
+        }
+
+        .tool-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: none;
+            background: #2C6A9B;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .tool-btn:hover {
+            background: #1a4b75;
+            transform: scale(1.1);
+        }
+
+        .tool-btn:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        #node-details {
+            padding: 1.5rem;
+            height: calc(100vh - 180px);
+            overflow-y: auto;
+        }
+
+        #node-details h5 {
+            color: #2C6A9B;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            display: none;
+        }
+
+        .spinner {
+            width: 3rem;
+            height: 3rem;
+        }
+
+        .color-picker-container {
+            position: absolute;
+            top: 60px;
+            right: 15px;
+            z-index: 1000;
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: none;
+            flex-wrap: wrap;
+            width: 120px;
+        }
+
+        .color-picker-btn {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: 2px solid white;
+            cursor: pointer;
+            margin: 3px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+            transition: transform 0.2s;
+        }
+
+        .color-picker-btn:hover {
+            transform: scale(1.1);
+        }
+
+        @media (max-width: 992px) {
+            #organigrama-container {
+                height: 500px;
+            }
+            #node-details {
+                height: auto;
+                max-height: 300px;
+            }
+        }
+
+        #printModal .modal-body {
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+
+        #printPreview {
+            width: 100%;
+            border: 1px solid #ddd;
+            margin-bottom: 20px;
+        }
+
+        #dataPreview {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        #dataPreview th, #dataPreview td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+
+        #dataPreview th {
+            background-color: #f2f2f2;
+        }
+
+        #dataPreview tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid mt-3">
+        <div class="row">
+            <div class="col-lg-9">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h4 class="mb-0">Organigrama</h4>
+                        <div>
+                            <button id="btn-print" class="btn btn-success me-2">
+                                <i class="bi bi-printer"></i> Imprimir
+                            </button>
+                            <button id="btn-add-node" class="btn btn-primary">
+                                <i class="bi bi-plus-circle"></i> Añadir Nodo
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body p-0 position-relative">
+                        <div id="organigrama-container">
+                            <div class="loading-overlay">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Cargando...</span>
+                                </div>
+                            </div>
+                            <div id="organigrama"></div>
+                            <div class="organigrama-toolbar">
+                                <button class="tool-btn" id="zoom-in" title="Zoom In">
+                                    <i class="bi bi-zoom-in"></i>
+                                </button>
+                                <button class="tool-btn" id="zoom-out" title="Zoom Out">
+                                    <i class="bi bi-zoom-out"></i>
+                                </button>
+                                <button class="tool-btn" id="reset-view" title="Reset View">
+                                    <i class="bi bi-fullscreen"></i>
+                                </button>
+                                <button class="tool-btn" id="center-view" title="Centrar Vista">
+                                    <i class="bi bi-crosshair"></i>
+                                </button>
+                                <button class="tool-btn" id="change-color" title="Cambiar color">
+                                    <i class="bi bi-palette"></i>
+                                </button>
+                                <button class="tool-btn" id="export-image" title="Guardar como imagen">
+                                    <i class="bi bi-image"></i>
+                                </button>
+                            </div>
+                            <div class="color-picker-container" id="color-picker">
+                                <div class="color-picker-btn" style="background-color: #D4E6F1;" data-color="#D4E6F1" data-stroke="#2C6A9B"></div>
+                                <div class="color-picker-btn" style="background-color: #D5E8D4;" data-color="#D5E8D4" data-stroke="#4A8C5E"></div>
+                                <div class="color-picker-btn" style="background-color: #F8D7DA;" data-color="#F8D7DA" data-stroke="#842029"></div>
+                                <div class="color-picker-btn" style="background-color: #FFF3CD;" data-color="#FFF3CD" data-stroke="#664D03"></div>
+                                <div class="color-picker-btn" style="background-color: #E7F1FF;" data-color="#E7F1FF" data-stroke="#084298"></div>
+                                <div class="color-picker-btn" style="background-color: #E2E3E5;" data-color="#E2E3E5" data-stroke="#41464B"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 mt-3 mt-lg-0">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <h4 class="mb-0">Detalles del Nodo</h4>
+                    </div>
+                    <div class="card-body p-0">
+                        <div id="node-details">
+                            <p class="text-muted m-3">Seleccione un nodo para ver detalles</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para nodos -->
+    <div class="modal fade" id="nodeModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalTitle">Añadir Nodo</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="node-form">
+                    <input type="hidden" id="node-id">
+                    <div class="modal-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="node-title" class="form-label">Título*</label>
+                                    <input type="text" class="form-control" id="node-title" required maxlength="100">
+                                    <div class="invalid-feedback">Por favor ingrese un título válido</div>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="node-type" class="form-label">Tipo*</label>
+                                    <select class="form-select" id="node-type" required>
+                                        <option value="direct">Directo</option>
+                                        <option value="advisory">Asesoría</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="node-parent-id" class="form-label">Nodo Padre</label>
+                                    <select class="form-select" id="node-parent-id">
+                                        <option value="">Sin padre (Nodo raíz)</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="node-description" class="form-label">Descripción</label>
+                                    <textarea class="form-control" id="node-description" rows="5" style="height: 100%" maxlength="500"></textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="button" id="btn-delete-node" class="btn btn-danger me-auto" style="display: none;">
+                            <i class="bi bi-trash"></i> Eliminar
+                        </button>
+                        <button type="submit" class="btn btn-primary" id="btn-save-node">
+                            <i class="bi bi-save"></i> Guardar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para impresión -->
+    <div class="modal fade" id="printModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Vista Previa de Impresión</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="text-center mb-4">
+                        <h4>Organigrama Empresarial</h4>
+                        <p class="text-muted">Generado el: <span id="print-date"></span></p>
+                    </div>
+                    <img id="printPreview" src="" alt="Vista previa del organigrama">
+                    <h5 class="mt-4 mb-3">Datos de los Nodos</h5>
+                    <table id="dataPreview">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Título</th>
+                                <th>Tipo</th>
+                                <th>Padre</th>
+                                <th>Descripción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dataPreviewBody">
+                            <!-- Los datos se llenarán con JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                    <button type="button" class="btn btn-primary" id="btn-generate-pdf">
+                        <i class="bi bi-file-earmark-pdf"></i> Generar PDF
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/backbone.js/1.4.0/backbone-min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jointjs/3.5.5/joint.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Constantes de configuración
+            const CONFIG = {
+                NODE_WIDTH: 180,
+                NODE_HEIGHT: 80,
+                MARGIN: 100,
+                LEVEL_HEIGHT: 150,
+                PAPER_WIDTH: 3000,
+                PAPER_HEIGHT: 3000,
+                GRID_SIZE: 40
+            };
+
+            // Inicialización del gráfico
+            const graph = new joint.dia.Graph();
+            const paper = new joint.dia.Paper({
+                el: document.getElementById('organigrama'),
+                model: graph,
+                width: CONFIG.PAPER_WIDTH,
+                height: CONFIG.PAPER_HEIGHT,
+                gridSize: CONFIG.GRID_SIZE,
+                drawGrid: { name: 'mesh' },
+                background: { color: '#ffffff' },
+                interactive: true,
+                frozen: false,
+                async: true,
+                sorting: joint.dia.Paper.sorting.APPROX,
+                cellViewNamespace: joint.shapes
+            });
+
+            // Variables globales
+            let nodes = {};
+            let selectedNode = null;
+            let isDragging = false;
+            const modal = new bootstrap.Modal(document.getElementById('nodeModal'));
+            const printModal = new bootstrap.Modal(document.getElementById('printModal'));
+            const nodeForm = document.getElementById('node-form');
+            const container = document.getElementById('organigrama-container');
+            const loadingOverlay = document.querySelector('.loading-overlay');
+            const colorPicker = document.getElementById('color-picker');
+
+            // Mostrar u ocultar carga
+            function showLoading(show) {
+                loadingOverlay.style.display = show ? 'flex' : 'none';
+            }
+
+            // Función para obtener posición inicial organizada
+            function getInitialPosition(parentId = null) {
+                if (parentId && nodes[parentId]) {
+                    const parent = nodes[parentId];
+                    const parentPos = parent.position();
+                    
+                    const siblings = Object.values(nodes).filter(n => 
+                        n.get('nodeData').parent_id == parentId
+                    );
+                    
+                    return {
+                        x: parentPos.x + (siblings.length * (CONFIG.NODE_WIDTH + CONFIG.MARGIN)) - 
+                           ((siblings.length * (CONFIG.NODE_WIDTH + CONFIG.MARGIN)) / 2),
+                        y: parentPos.y + CONFIG.LEVEL_HEIGHT
+                    };
+                } else {
+                    return {
+                        x: (CONFIG.PAPER_WIDTH - CONFIG.NODE_WIDTH) / 2,
+                        y: 100
+                    };
+                }
+            }
+
+            // Función para crear elementos visuales
+            function createNodeElement(nodeData) {
+    const position = nodeData.posicion_x && nodeData.posicion_y 
+        ? { x: nodeData.posicion_x, y: nodeData.posicion_y }
+        : getInitialPosition(nodeData.padre_id);
+    
+    const node = new joint.shapes.standard.Rectangle({
+        id: nodeData.id.toString(),
+        position: position,
+        size: { width: CONFIG.NODE_WIDTH, height: CONFIG.NODE_HEIGHT },
+        attrs: {
+            body: {
+                fill: nodeData.color || (nodeData.tipo === 'direct' ? '#D4E6F1' : '#D5E8D4'),
+                stroke: nodeData.strokeColor || (nodeData.tipo === 'direct' ? '#2C6A9B' : '#4A8C5E'),
+                strokeWidth: 2,
+                rx: 5,
+                ry: 5,
+                cursor: 'move'
+            },
+            label: {
+                text: nodeData.titulo,
+                fontSize: 13,
+                fontWeight: 'bold',
+                fill: '#333',
+                cursor: 'pointer'
+            }
+        }
+    });
+    
+    node.set('nodeData', nodeData);
+    return node;
+}
+        
+            // Función para crear conexiones
+            function createConnection(sourceId, targetId, type) {
+                return new joint.shapes.standard.Link({
+                    source: { id: sourceId },
+                    target: { id: targetId },
+                    attrs: {
+                        line: {
+                            stroke: type === 'direct' ? '#333' : '#999',
+                            strokeWidth: 2,
+                            strokeDasharray: type === 'advisory' ? '5,3' : '',
+                            targetMarker: {
+                                type: 'path',
+                                d: 'M 10 -5 0 0 10 5 z',
+                                fill: type === 'direct' ? '#333' : '#999'
+                            }
+                        }
+                    },
+                    router: {
+                        name: 'manhattan',
+                        args: {
+                            step: CONFIG.GRID_SIZE,
+                            padding: 10,
+                            maxAllowedDirectionChange: 90
+                        }
+                    }
+                });
+            }
+
+            // Función para cargar el organigrama desde la API
+            async function loadOrganigram() {
+                try {
+                    showLoading(true);
+                    const response = await fetch('/api/nodos');
+                    if (!response.ok) {
+                        throw new Error('Error al cargar nodos');
+                    }
+                    const nodos = await response.json();
+                    
+                    graph.clear();
+                    nodes = {};
+                    
+                    // Crear nodos
+                    nodos.forEach(nodeData => {
+                        const node = createNodeElement(nodeData);
+                        node.addTo(graph);
+                        nodes[nodeData.id] = node;
+                    });
+                    
+                    // Crear conexiones
+                    nodos.forEach(nodeData => {
+                        if (nodeData.padre_id && nodes[nodeData.padre_id]) {
+                            const link = createConnection(
+                                nodeData.padre_id.toString(),
+                                nodeData.id.toString(),
+                                nodeData.tipo
+                            );
+                            link.addTo(graph);
+                        }
+                    });
+                    
+                    await updateParentSelect();
+                    setTimeout(centerView, 100);
+                    
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert('Error al cargar el organigrama: ' + error.message);
+                } finally {
+                    showLoading(false);
+                }
+            }
+
+            // Actualizar selector de padres
+            async function updateParentSelect() {
+                try {
+                    const response = await fetch('/api/nodos');
+                    if (!response.ok) {
+                        throw new Error('Error al cargar nodos');
+                    }
+                    const nodos = await response.json();
+                    
+                    const select = document.getElementById('node-parent-id');
+                    select.innerHTML = '<option value="">Sin padre (Nodo raíz)</option>';
+                    
+                    nodos.forEach(node => {
+                        // No permitir seleccionar el nodo actual como padre
+                        if (selectedNode && node.id === selectedNode.get('nodeData').id) return;
+                        
+                        const option = document.createElement('option');
+                        option.value = node.id;
+                        option.textContent = node.titulo;
+                        select.appendChild(option);
+                    });
+                    
+                    // Seleccionar el padre actual si existe
+                    if (selectedNode) {
+                        const parentId = selectedNode.get('nodeData').padre_id;
+                        if (parentId) {
+                            select.value = parentId;
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error al actualizar padres:', error);
+                }
+            }
+
+            // Función para exportar a imagen
+            async function exportToImage() {
+                const btn = document.getElementById('export-image');
+                try {
+                    // Mostrar estado de carga
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="bi bi-hourglass"></i>';
+                    
+                    const element = document.getElementById('organigrama');
+                    
+                    const options = {
+                        scale: 2,
+                        logging: false,
+                        useCORS: true,
+                        scrollX: -paper.el.scrollLeft,
+                        scrollY: -paper.el.scrollTop,
+                        width: paper.options.width,
+                        height: paper.options.height,
+                        x: 0,
+                        y: 0,
+                        windowWidth: paper.options.width,
+                        windowHeight: paper.options.height
+                    };
+                    
+                    const canvas = await html2canvas(element, options);
+                    
+                    // Crear enlace de descarga
+                    const link = document.createElement('a');
+                    link.download = 'organigrama_' + new Date().toISOString().slice(0, 10) + '.png';
+                    link.href = canvas.toDataURL('image/png');
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    
+                } catch (error) {
+                    console.error('Error al generar imagen:', error);
+                    alert('Error al exportar: ' + error.message);
+                } finally {
+                    // Restaurar botón
+                    btn.innerHTML = '<i class="bi bi-image"></i>';
+                    btn.disabled = false;
+                }
+            }
+
+            // Función para guardar/actualizar nodos
+            async function saveNode(nodeData) {
+                try {
+                    showLoading(true);
+                    const method = nodeData.id ? 'PUT' : 'POST';
+                    const url = nodeData.id ? `/api/nodos/${nodeData.id}` : '/api/nodos';
+                    
+                    const response = await fetch(url, {
+                        method: method,
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            titulo: nodeData.titulo,
+                            descripcion: nodeData.descripcion,
+                            tipo: nodeData.tipo,
+                            padre_id: nodeData.padre_id || null,
+                            posicion_x: nodeData.posicion_x,
+                            posicion_y: nodeData.posicion_y,
+                            color: nodeData.color,
+                            strokeColor: nodeData.strokeColor
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error('Error al guardar el nodo');
+                    }
+                    
+                    return await response.json();
+                    
+                } catch (error) {
+                    console.error('Error:', error);
+                    throw error;
+                } finally {
+                    showLoading(false);
+                }
+            }
+
+            // Función para eliminar nodos
+            async function deleteNode(nodeId) {
+                try {
+                    showLoading(true);
+                    const response = await fetch(`/api/nodos/${nodeId}`, {
+                        method: 'DELETE'
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error('Error al eliminar el nodo');
+                    }
+                    
+                    return await response.json();
+                    
+                } catch (error) {
+                    console.error('Error:', error);
+                    throw error;
+                } finally {
+                    showLoading(false);
+                }
+            }
+
+            // Función para cambiar color de un nodo
+            async function changeNodeColor(nodeId, color, strokeColor) {
+    try {
+        if (!nodeId || !nodes[nodeId]) return;
+        
+        const node = nodes[nodeId];
+        const nodeData = node.get('nodeData');
+        
+        // Actualizar visualmente
+        node.attr('body/fill', color);
+        node.attr('body/stroke', strokeColor);
+        
+        // Actualizar en el servidor
+        await saveNode({
+            ...nodeData,
+            color: color,
+            strokeColor: strokeColor,
+            posicion_x: node.position().x,
+            posicion_y: node.position().y
+        });
+        
+    } catch (error) {
+        console.error('Error al cambiar color:', error);
+        alert('Error al cambiar color: ' + error.message);
+    }
+}
+
+            // Configurar controles de zoom
+            function setupControls() {
+                document.getElementById('zoom-in').addEventListener('click', () => {
+                    paper.scale(paper.scale().sx * 1.2, paper.scale().sy * 1.2);
+                });
+
+                document.getElementById('zoom-out').addEventListener('click', () => {
+                    paper.scale(paper.scale().sx * 0.8, paper.scale().sy * 0.8);
+                });
+
+                document.getElementById('reset-view').addEventListener('click', () => {
+                    paper.scale(1, 1);
+                    centerView();
+                });
+
+                document.getElementById('center-view').addEventListener('click', () => {
+                    if (selectedNode) {
+                        centerOnNode(selectedNode.id);
+                    } else {
+                        centerView();
+                    }
+                });
+
+                // Control para cambiar color
+                document.getElementById('change-color').addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    
+                    if (!selectedNode) {
+                        alert('Por favor seleccione un nodo primero');
+                        return;
+                    }
+                    
+                    // Alternar visibilidad del selector de color
+                    if (colorPicker.style.display === 'block') {
+                        colorPicker.style.display = 'none';
+                    } else {
+                        colorPicker.style.display = 'block';
+                        
+                        // Posicionar el selector cerca del botón
+                        const btnRect = this.getBoundingClientRect();
+                        const containerRect = container.getBoundingClientRect();
+                        
+                        colorPicker.style.top = `${btnRect.bottom - containerRect.top + 5}px`;
+                        colorPicker.style.right = `${containerRect.right - btnRect.right + 5}px`;
+                    }
+                });
+
+                // Eventos para los botones de color
+                document.querySelectorAll('.color-picker-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        if (!selectedNode) return;
+                        
+                        const color = this.getAttribute('data-color');
+                        const strokeColor = this.getAttribute('data-stroke');
+                        
+                        changeNodeColor(selectedNode.id, color, strokeColor);
+                        colorPicker.style.display = 'none';
+                    });
+                });
+                
+                document.getElementById('export-image').addEventListener('click', exportToImage);
+                
+                // Evento para el botón de impresión
+                document.getElementById('btn-print').addEventListener('click', showPrintPreview);
+                
+                // Evento para generar PDF
+                document.getElementById('btn-generate-pdf').addEventListener('click', generatePDF);
+                
+                // Cerrar el selector al hacer clic fuera
+                document.addEventListener('click', function(e) {
+                    if (!colorPicker.contains(e.target) && e.target.id !== 'change-color') {
+                        colorPicker.style.display = 'none';
+                    }
+                });
+            }
+
+            // Función para mostrar vista previa de impresión
+            async function showPrintPreview() {
+                try {
+                    showLoading(true);
+                    
+                    // Obtener datos de la API
+                    const response = await fetch('/api/nodos');
+                    if (!response.ok) {
+                        throw new Error('Error al cargar nodos para impresión');
+                    }
+                    const nodos = await response.json();
+                    
+                    // Mostrar fecha actual
+                    const now = new Date();
+                    document.getElementById('print-date').textContent = now.toLocaleDateString() + ' ' + now.toLocaleTimeString();
+                    
+                    // Generar vista previa del organigrama
+                    const element = document.getElementById('organigrama');
+                    const options = {
+                        scale: 0.5,
+                        logging: false,
+                        useCORS: true,
+                        scrollX: -paper.el.scrollLeft,
+                        scrollY: -paper.el.scrollTop,
+                        width: paper.options.width,
+                        height: paper.options.height,
+                        x: 0,
+                        y: 0,
+                        windowWidth: paper.options.width,
+                        windowHeight: paper.options.height
+                    };
+                    
+                    const canvas = await html2canvas(element, options);
+                    document.getElementById('printPreview').src = canvas.toDataURL('image/png');
+                    
+                    // Llenar tabla con datos
+                    const tbody = document.getElementById('dataPreviewBody');
+                    tbody.innerHTML = '';
+                    
+                    nodos.forEach(node => {
+                        const padre = node.padre_id ? nodos.find(n => n.id === node.padre_id) : null;
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td>${node.id}</td>
+                            <td>${node.titulo}</td>
+                            <td>${node.tipo === 'direct' ? 'Directo' : 'Asesoría'}</td>
+                            <td>${padre ? padre.titulo : 'Raíz'}</td>
+                            <td>${node.descripcion || 'N/A'}</td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                    
+                    // Mostrar modal
+                    printModal.show();
+                    
+                } catch (error) {
+                    console.error('Error al generar vista previa:', error);
+                    alert('Error al generar vista previa: ' + error.message);
+                } finally {
+                    showLoading(false);
+                }
+            }
+
+            // Función para generar PDF
+            async function generatePDF() {
+                try {
+                    showLoading(true);
+                    const btn = document.getElementById('btn-generate-pdf');
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="bi bi-hourglass"></i> Generando...';
+                    
+                    // Usar jsPDF del namespace global
+                    const { jsPDF } = window.jspdf;
+                    const pdf = new jsPDF({
+                        orientation: 'landscape',
+                        unit: 'mm'
+                    });
+                    
+                    // Añadir título
+                    pdf.setFontSize(18);
+                    pdf.text('Organigrama Empresarial', 148, 15, { align: 'center' });
+                    
+                    // Añadir fecha
+                    pdf.setFontSize(10);
+                    const now = new Date();
+                    pdf.text('Generado el: ' + now.toLocaleDateString() + ' ' + now.toLocaleTimeString(), 148, 22, { align: 'center' });
+                    
+                    // Añadir imagen del organigrama
+                    const element = document.getElementById('organigrama');
+                    const options = {
+                        scale: 0.3,
+                        logging: false,
+                        useCORS: true,
+                        scrollX: -paper.el.scrollLeft,
+                        scrollY: -paper.el.scrollTop,
+                        width: paper.options.width,
+                        height: paper.options.height,
+                        x: 0,
+                        y: 0,
+                        windowWidth: paper.options.width,
+                        windowHeight: paper.options.height
+                    };
+                    
+                    const canvas = await html2canvas(element, options);
+                    const imgData = canvas.toDataURL('image/jpeg', 0.8);
+                    
+                    // Ajustar tamaño de la imagen para el PDF
+                    const imgWidth = 280; // mm
+                    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+                    
+                    pdf.addImage(imgData, 'JPEG', 10, 30, imgWidth, imgHeight);
+                    
+                    // Añadir datos en una nueva página
+                    pdf.addPage();
+                    pdf.setFontSize(16);
+                    pdf.text('Datos de los Nodos', 148, 15, { align: 'center' });
+                    
+                    // Obtener datos de la API
+                    const response = await fetch('/api/nodos');
+                    if (!response.ok) {
+                        throw new Error('Error al cargar nodos para PDF');
+                    }
+                    const nodos = await response.json();
+                    
+                    // Configurar tabla
+                    pdf.setFontSize(10);
+                    const columns = [
+                        { header: 'ID', dataKey: 'id' },
+                        { header: 'Título', dataKey: 'titulo' },
+                        { header: 'Tipo', dataKey: 'tipo' },
+                        { header: 'Padre', dataKey: 'padre' },
+                        { header: 'Descripción', dataKey: 'descripcion' }
+                    ];
+                    
+                    const rows = nodos.map(node => {
+                        const padre = node.padre_id ? nodos.find(n => n.id === node.padre_id) : null;
+                        return {
+                            id: node.id,
+                            titulo: node.titulo,
+                            tipo: node.tipo === 'direct' ? 'Directo' : 'Asesoría',
+                            padre: padre ? padre.titulo : 'Raíz',
+                            descripcion: node.descripcion || 'N/A'
+                        };
+                    });
+                    
+                    // Añadir tabla al PDF usando autoTable
+                    pdf.autoTable({
+                        startY: 25,
+                        head: [columns.map(col => col.header)],
+                        body: rows.map(row => columns.map(col => row[col.dataKey])),
+                        margin: { left: 10, right: 10 },
+                        styles: { fontSize: 8, cellPadding: 2 },
+                        headStyles: { fillColor: [41, 128, 185] }
+                    });
+                    
+                    // Guardar PDF
+                    pdf.save('organigrama_' + now.toISOString().slice(0, 10) + '.pdf');
+                    
+                    // Cerrar modal
+                    printModal.hide();
+                    
+                } catch (error) {
+                    console.error('Error al generar PDF:', error);
+                    alert('Error al generar PDF: ' + error.message);
+                } finally {
+                    const btn = document.getElementById('btn-generate-pdf');
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="bi bi-file-earmark-pdf"></i> Generar PDF';
+                    showLoading(false);
+                }
+            }
+
+            // Función para centrar la vista en un nodo
+            function centerOnNode(nodeId) {
+                if (!nodeId || !nodes[nodeId]) return;
+                
+                const node = nodes[nodeId];
+                const nodePos = node.position();
+                const nodeSize = node.size();
+                
+                container.scrollTo({
+                    left: nodePos.x + nodeSize.width/2 - container.clientWidth/2,
+                    top: nodePos.y + nodeSize.height/2 - container.clientHeight/2,
+                    behavior: 'smooth'
+                });
+            }
+
+            // Función para centrar toda la estructura
+            function centerView() {
+                if (Object.keys(nodes).length === 0) return;
+                
+                const allNodes = Object.values(nodes);
+                const minX = Math.min(...allNodes.map(n => n.position().x));
+                const minY = Math.min(...allNodes.map(n => n.position().y));
+                const maxX = Math.max(...allNodes.map(n => n.position().x + n.size().width));
+                const maxY = Math.max(...allNodes.map(n => n.position().y + n.size().height));
+                
+                container.scrollTo({
+                    left: (minX + maxX)/2 - container.clientWidth/2,
+                    top: (minY + maxY)/2 - container.clientHeight/2,
+                    behavior: 'smooth'
+                });
+            }
+
+            // Evento para añadir nodo
+            document.getElementById('btn-add-node').addEventListener('click', function() {
+                selectedNode = null;
+                document.getElementById('modalTitle').textContent = 'Añadir Nodo';
+                document.getElementById('btn-delete-node').style.display = 'none';
+                document.getElementById('node-id').value = '';
+                document.getElementById('node-form').reset();
+                document.getElementById('node-title').classList.remove('is-invalid');
+                modal.show();
+                
+                // Actualizar select de padres después de que el modal se muestre
+                setTimeout(updateParentSelect, 500);
+            });
+
+            // Validar formulario
+            nodeForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const titleInput = document.getElementById('node-title');
+                if (!titleInput.value.trim()) {
+                    titleInput.classList.add('is-invalid');
+                    return;
+                }
+                
+                handleFormSubmit();
+            });
+
+            // Manejar envío del formulario
+            async function handleFormSubmit() {
+                const nodeId = document.getElementById('node-id').value;
+                const parentId = document.getElementById('node-parent-id').value || null;
+                
+                const nodeData = {
+                    id: nodeId || null,
+                    titulo: document.getElementById('node-title').value.trim(),
+                    descripcion: document.getElementById('node-description').value.trim(),
+                    tipo: document.getElementById('node-type').value,
+                    padre_id: parentId,
+                    posicion_x: 0,
+                    posicion_y: 0
+                };
+
+                try {
+                    const savedNode = await saveNode(nodeData);
+                    
+                    modal.hide();
+                    await loadOrganigram();
+                    if (savedNode.id) {
+                        centerOnNode(savedNode.id);
+                    }
+                    
+                } catch (error) {
+                    alert('Error: ' + error.message);
+                }
+            }
+
+            // Evento para eliminar nodo
+            document.getElementById('btn-delete-node').addEventListener('click', async function() {
+                if (!selectedNode) return;
+                
+                if (confirm('¿Estás seguro de que quieres eliminar este nodo y todos sus descendientes?')) {
+                    try {
+                        await deleteNode(selectedNode.id);
+                        
+                        modal.hide();
+                        await loadOrganigram();
+                        
+                    } catch (error) {
+                        alert('Error: ' + error.message);
+                    }
+                }
+            });
+
+            // Eventos para interacción con nodos
+            paper.on('element:pointerdown', function(elementView) {
+                isDragging = true;
+                selectedNode = elementView.model;
+                colorPicker.style.display = 'none';
+            });
+
+            // Debounce para actualización de posición
+            const updateNodePosition = _.debounce(async function(node) {
+                const nodeData = node.get('nodeData');
+                if (!nodeData || !nodeData.id) return;
+                
+                try {
+                    const position = node.position();
+                    await saveNode({
+                        ...nodeData,
+                        posicion_x: position.x,
+                        posicion_y: position.y
+                    });
+                } catch (error) {
+                    console.error('Error al actualizar posición:', error);
+                }
+            }, 500);
+
+            paper.on('element:pointerup', function(elementView) {
+                if (!isDragging) return;
+                isDragging = false;
+                
+                const node = elementView.model;
+                updateNodePosition(node);
+            });
+
+            paper.on('element:pointerclick', function(elementView) {
+                if (isDragging) return;
+                
+                selectedNode = elementView.model;
+                const nodeData = selectedNode.get('nodeData');
+                
+                document.getElementById('node-details').innerHTML = `
+                    <h5>${nodeData.titulo}</h5>
+                    <p class="mb-2"><small class="text-muted">Tipo: ${nodeData.tipo === 'direct' ? 'Directo' : 'Asesoría'}</small></p>
+                    <p class="mb-2"><small class="text-muted">Posición: ${Math.round(nodeData.posicion_x || 0)}, ${Math.round(nodeData.posicion_y || 0)}</small></p>
+                    <div class="mb-3">${nodeData.descripcion || '<p class="text-muted">Sin descripción</p>'}</div>
+                    <button class="btn btn-sm btn-primary w-100" id="btn-edit-node">
+                        <i class="bi bi-pencil"></i> Editar
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary w-100 mt-2" id="btn-center-node">
+                        <i class="bi bi-crosshair"></i> Centrar Vista
+                    </button>
+                    <button class="btn btn-sm btn-outline-success w-100 mt-2" id="btn-change-color">
+                        <i class="bi bi-palette"></i> Cambiar Color
+                    </button>
+                `;
+                
+                document.getElementById('btn-edit-node').addEventListener('click', function() {
+                    document.getElementById('modalTitle').textContent = 'Editar Nodo';
+                    document.getElementById('btn-delete-node').style.display = 'block';
+                    document.getElementById('node-id').value = nodeData.id;
+                    document.getElementById('node-title').value = nodeData.titulo;
+                    document.getElementById('node-description').value = nodeData.descripcion || '';
+                    document.getElementById('node-type').value = nodeData.tipo;
+                    modal.show();
+                    
+                    // Actualizar select de padres después de que el modal se muestre
+                    setTimeout(updateParentSelect, 500);
+                });
+                
+                document.getElementById('btn-center-node').addEventListener('click', function() {
+                    centerOnNode(nodeData.id);
+                });
+                
+                document.getElementById('btn-change-color').addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    
+                    // Mostrar el selector de color
+                    colorPicker.style.display = 'block';
+                    
+                    // Posicionar el selector cerca del botón
+                    const btnRect = this.getBoundingClientRect();
+                    const detailsRect = document.getElementById('node-details').getBoundingClientRect();
+                    const containerRect = container.getBoundingClientRect();
+                    
+                    colorPicker.style.top = `${btnRect.bottom - containerRect.top + 5}px`;
+                    colorPicker.style.left = `${btnRect.left - containerRect.left}px`;
+                });
+            });
+
+            // Doble clic para edición rápida
+            paper.on('element:pointerdblclick', function(elementView) {
+                selectedNode = elementView.model;
+                const nodeData = selectedNode.get('nodeData');
+                
+                document.getElementById('modalTitle').textContent = 'Editar Nodo';
+                document.getElementById('btn-delete-node').style.display = 'block';
+                document.getElementById('node-id').value = nodeData.id;
+                document.getElementById('node-title').value = nodeData.titulo;
+                document.getElementById('node-description').value = nodeData.descripcion || '';
+                document.getElementById('node-type').value = nodeData.tipo;
+                modal.show();
+                
+                // Actualizar select de padres después de que el modal se muestre
+                setTimeout(updateParentSelect, 500);
+            });
+
+            // Resetear formulario cuando se cierra el modal
+            document.getElementById('nodeModal').addEventListener('hidden.bs.modal', function() {
+                nodeForm.reset();
+                document.getElementById('node-title').classList.remove('is-invalid');
+            });
+
+            // Inicialización
+            setupControls();
+            loadOrganigram();
+        });
+    </script>
+</body>
+</html>
